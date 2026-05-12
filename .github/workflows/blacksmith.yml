@@ -21,8 +21,59 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Generate Dummy Keystore
+      run: |
+        keytool -genkey -v -keystore release.keystore -alias release -keyalg RSA -keysize 2048 -validity 10000 -storepass password -keypass password -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown"
+
+    - name: Set up gradle.properties
+      run: |
+        echo 'RELEASE_STORE_FILE=../release.keystore' >> gradle.properties
+        echo 'RELEASE_STORE_PASSWORD=password' >> gradle.properties
+        echo 'RELEASE_KEY_ALIAS=release' >> gradle.properties
+        echo 'RELEASE_KEY_PASSWORD=password' >> gradle.properties
+        echo 'librera_admobAppId="none"' >> gradle.properties
+        echo 'librera_admobBannerId="none"' >> gradle.properties
+        echo 'librera_admobFullId="none"' >> gradle.properties
+        echo 'librera_admobRewardId="none"' >> gradle.properties
+        echo 'librera_appGdriveKey="none"' >> gradle.properties
+        echo 'epub_reader_admobAppId="none"' >> gradle.properties
+        echo 'epub_reader_admobBannerId="none"' >> gradle.properties
+        echo 'epub_reader_admobFullId="none"' >> gradle.properties
+        echo 'epub_reader_admobRewardId="none"' >> gradle.properties
+        echo 'epub_reader_appGdriveKey="none"' >> gradle.properties
+        echo 'pdf_v2_admobAppId="none"' >> gradle.properties
+        echo 'pdf_v2_admobBannerId="none"' >> gradle.properties
+        echo 'pdf_v2_admobFullId="none"' >> gradle.properties
+        echo 'pdf_v2_admobRewardId="none"' >> gradle.properties
+        echo 'pdf_v2_appGdriveKey="none"' >> gradle.properties
+        echo 'pro_appGdriveKey="none"' >> gradle.properties
+        echo 'pdf_classic_appGdriveKey="none"' >> gradle.properties
+        echo 'pdf_classic_admobAppId="none"' >> gradle.properties
+        echo 'pdf_classic_admobBannerId="none"' >> gradle.properties
+        echo 'pdf_classic_admobFullId="none"' >> gradle.properties
+        echo 'pdf_classic_admobRewardId="none"' >> gradle.properties
+        echo 'ebooka_appGdriveKey="none"' >> gradle.properties
+        echo 'ebooka_admobAppId="none"' >> gradle.properties
+        echo 'ebooka_admobBannerId="none"' >> gradle.properties
+        echo 'ebooka_admobFullId="none"' >> gradle.properties
+        echo 'ebooka_admobRewardId="none"' >> gradle.properties
+        echo 'tts_reader_appGdriveKey="none"' >> gradle.properties
+        echo 'tts_reader_admobAppId="none"' >> gradle.properties
+        echo 'tts_reader_admobBannerId="none"' >> gradle.properties
+        echo 'tts_reader_admobFullId="none"' >> gradle.properties
+        echo 'tts_reader_admobRewardId="none"' >> gradle.properties
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build with Gradle
-      run: ./gradlew app:assembleDebug
+    - name: Accept SDK Licenses
+      run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+    - name: Build with Gradle (Pro Arm64)
+      run: ./gradlew app:assembleProRelease
+
+    - name: Upload arm64 APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: Librera.Pro-arm64
+        path: app/build/outputs/apk/pro/release/*arm64-v8a*.apk
