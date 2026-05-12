@@ -371,6 +371,18 @@ public class TTSControlsView extends FrameLayout {
         }
     }
 
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onTtsPreloadStats(TtsPreloadStats stats) {
+        if (ttsPreloadStats != null) {
+            if (com.foobnix.model.AppState.get().ttsPrecomputeLines > 0) {
+                ttsPreloadStats.setVisibility(View.VISIBLE);
+                ttsPreloadStats.setText(String.format("Preload Buffer - Pending: %d | Ready: %d | Playing: %d", stats.pending, stats.synthesized, stats.playing));
+            } else {
+                ttsPreloadStats.setVisibility(View.GONE);
+            }
+        }
+    }
+
     public void reset() {
         TTSEngine.get().loadMP3(BookCSS.get().mp3BookPathGet());
         update.run();

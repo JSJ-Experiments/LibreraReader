@@ -7,6 +7,8 @@ import com.foobnix.LibreraApp;
 import com.foobnix.android.utils.LOG;
 import com.foobnix.model.AppState;
 
+import org.greenrobot.eventbus.EventBus;
+
 import java.io.File;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -65,17 +67,35 @@ public class TTSPreloadTask {
         synthesizeNext();
     }
 
+    private void postStats() {
+        int pending = 0;
+        int synthesized = 0;
+        int playing = isPlaying ? 1 : 0;
+        synchronized (queue) {
+            for (Sentence s : queue) {
+                if (s.isSilence) continue;
+                if (s.isSynthesized) {
+                    synthesized++;
+                } else {
+                    pending++;
+                }
+            }
+        }
+        EventBus.getDefault().post(new TtsPreloadStats(pending, synthesized, playing));
+    }
+
     private void synthesizeNext() {
         if (isStopped) return;
-        int activeOrPending = 0;
+        int activeOrReady = 0;
         Sentence toSynth = null;
         synchronized (queue) {
             for (Sentence s : queue) {
-                if (!s.isSilence && s.synthesisTriggered && !s.isSynthesized) {
-                    activeOrPending++;
+                if (!s.isSilence && (s.isSynthesized || s.synthesisTriggered)) {
+                    activeOrReady++;
                 }
             }
-            if (activeOrPending >= AppState.get().ttsPrecomputeLines) {
+            if (activeOrReady >= AppState.get().ttsPrecomputeLines) {
+                postStats();
                 return;
             }
             for (Sentence s : queue) {
@@ -92,6 +112,7 @@ public class TTSPreloadTask {
             LOG.d(TAG, "Triggering synthesis for " + toSynth.utteranceId);
             tts.synthesizeToFile(toSynth.text, map, toSynth.wavFile.getAbsolutePath());
         }
+        postStats();
     }
 
     public void onSynthesizeDone(String synthUtteranceId) {
@@ -106,6 +127,7 @@ public class TTSPreloadTask {
                 }
             }
         }
+        postStats();
         checkPlay();
         synthesizeNext(); // try to synthesize the next one
     }
@@ -125,6 +147,7 @@ public class TTSPreloadTask {
 
         if (next.isSilence) {
             isPlaying = true;
+            postStats();
             synchronized (queue) {
                 queue.poll();
             }
@@ -141,6 +164,7 @@ public class TTSPreloadTask {
             }).start();
         } else if (next.isSynthesized) {
             isPlaying = true;
+            postStats();
             synchronized (queue) {
                 queue.poll();
             }
@@ -153,27 +177,12 @@ public class TTSPreloadTask {
         try {
             currentPlayer = new MediaPlayer();
             currentPlayer.setDataSource(s.wavFile.getAbsolutePath());
-            
-            // Try to prepare gapless next player if available
-            Sentence nextS = null;
-            synchronized (queue) {
-                for (Sentence pending : queue) {
-                    if (!pending.isSilence && pending.isSynthesized) {
-                        nextS = pending;
-                        break;
-                    }
-                }
-            }
-            if (nextS != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
-                MediaPlayer nextPlayer = new MediaPlayer();
-                nextPlayer.setDataSource(nextS.wavFile.getAbsolutePath());
-                nextPlayer.prepare();
-                currentPlayer.setNextMediaPlayer(nextPlayer);
-                // Note: full gapless handling needs more complex state management, 
-                // but setting next player reduces gap. We'll stick to basic onCompletion for simplicity here
-                // to maintain our state machine.
-            }
 
+            // Gapless playback can be problematic without complex state tracking,
+            // because nextPlayer starts automatically and we must track its state.
+            // Using standard sequential playback here; gapless is mostly achieved
+            // by having the audio file already on disk, so prepare() is nearly instant.
+            
             currentPlayer.prepare();
             currentPlayer.setOnCompletionListener(mp -> {
                 if (isStopped) return;
@@ -222,5 +231,6 @@ public class TTSPreloadTask {
             }
             queue.clear();
         }
+        postStats();
     }
 }
