@@ -108,5 +108,5 @@ jobs:
     - name: Upload arm64 APK
       uses: actions/upload-artifact@v4
       with:
-        name: Librera.Pro-arm64
-        path: app/build/outputs/apk/pro/release/*arm64-v8a*.apk
+        name: Librera.Pro-APK
+        path: "app/build/outputs/apk/**/*.apk"
