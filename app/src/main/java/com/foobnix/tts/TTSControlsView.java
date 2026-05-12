@@ -105,6 +105,7 @@ public class TTSControlsView extends FrameLayout {
         ttsPrevTrack = (ImageView) view.findViewById(R.id.ttsPrevTrack);
         ttsNextTrack = (ImageView) view.findViewById(R.id.ttsNextTrack);
         trackName = (TextView) view.findViewById(R.id.trackName);
+        ttsPreloadStats = (TextView) view.findViewById(R.id.ttsPreloadStats);
 
         ttsDialog = (ImageView) view.findViewById(R.id.ttsDialog);
         ttsDialog.setVisibility(View.GONE);
