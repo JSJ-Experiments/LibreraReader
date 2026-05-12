@@ -364,27 +364,15 @@ public class TTSControlsView extends FrameLayout {
         EventBus.getDefault().unregister(this);
         handler.removeCallbacksAndMessages(null);
     }
-@Subscribe(threadMode = ThreadMode.MAIN)
-public void onTTSStatus(TtsStatus status) {
-    if (ttsPlayPause != null) {
-        handler.removeCallbacksAndMessages(null);
-        handler.postDelayed(update, 200);
-    }
-}
 
-@Subscribe(threadMode = ThreadMode.MAIN)
-public void onTtsPreloadStats(TtsPreloadStats stats) {
-    if (ttsPreloadStats != null) {
-        if (com.foobnix.model.AppState.get().ttsPrecomputeLines > 0) {
-            ttsPreloadStats.setVisibility(View.VISIBLE);
-            ttsPreloadStats.setText(String.format("Preload Buffer - Pending: %d | Ready: %d | Playing: %d", stats.pending, stats.synthesized, stats.playing));
-        } else {
-            ttsPreloadStats.setVisibility(View.GONE);
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onTTSStatus(TtsStatus status) {
+        if (ttsPlayPause != null) {
+            handler.removeCallbacksAndMessages(null);
+            handler.postDelayed(update, 200);
         }
     }
-}
 
-public void reset() {
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onTtsPreloadStats(TtsPreloadStats stats) {
         if (ttsPreloadStats != null) {
@@ -399,12 +387,6 @@ public void reset() {
 
     public void reset() {
         TTSEngine.get().loadMP3(BookCSS.get().mp3BookPathGet());
-        update.run();
-
-    }
-
-}
-Get());
         update.run();
 
     }
