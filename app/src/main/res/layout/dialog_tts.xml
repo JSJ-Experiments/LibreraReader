@@ -162,6 +162,26 @@
                 android:layout_height="wrap_content"
                 android:minWidth="150dip"
                 android:singleLine="true"
+                android:text="Precompute sentences" />
+
+            <TextView
+                android:id="@+id/ttsPrecomputeLines"
+                style="@style/textLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="3dip">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="150dip"
+                android:singleLine="true"
                 android:text="@string/stop_reading_timer_"
                 android:textStyle="normal" />
 

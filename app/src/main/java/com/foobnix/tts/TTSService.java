@@ -747,8 +747,7 @@ import java.util.List;
                          });
             } else {
                 TTSEngine.get()
-                         .getTTS()
-                         .setOnUtteranceCompletedListener(new OnUtteranceCompletedListener() {
+                         .setExternalCompletedListener(new OnUtteranceCompletedListener() {
                              @Override public void onUtteranceCompleted(String utteranceId) {
                                  if (utteranceId.startsWith(TTSEngine.STOP_SIGNAL)) {
                                      stopMediaSesstionAndReleaweWakeLock();

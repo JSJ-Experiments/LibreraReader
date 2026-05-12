@@ -64,6 +64,71 @@ public class TTSEngine {
     HashMap<String, String> map = new HashMap<String, String>();
     HashMap<String, String> mapTemp = new HashMap<String, String>();
 
+    volatile TTSPreloadTask preloadTask;
+    volatile android.speech.tts.UtteranceProgressListener externalProgressListener;
+    volatile OnUtteranceCompletedListener externalCompletedListener;
+
+    TTSPreloadTask.PlaybackListener playbackListener = new TTSPreloadTask.PlaybackListener() {
+        @Override
+        public void onSentenceStart(String utteranceId) {
+            if (externalProgressListener != null) externalProgressListener.onStart(utteranceId);
+        }
+        @Override
+        public void onSentenceDone(String utteranceId) {
+            if (externalProgressListener != null) externalProgressListener.onDone(utteranceId);
+            else if (externalCompletedListener != null) externalCompletedListener.onUtteranceCompleted(utteranceId);
+        }
+        @Override
+        public void onError(String utteranceId) {
+            if (externalProgressListener != null) externalProgressListener.onError(utteranceId);
+        }
+    };
+
+    public void setExternalProgressListener(android.speech.tts.UtteranceProgressListener listener) {
+        this.externalProgressListener = listener;
+        if (ttsEngine != null && Build.VERSION.SDK_INT >= 15) {
+            ttsEngine.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
+                @Override
+                public void onStart(String utteranceId) {
+                    if (utteranceId != null && utteranceId.startsWith("SYNTH_")) return;
+                    if (externalProgressListener != null) externalProgressListener.onStart(utteranceId);
+                }
+                @Override
+                public void onDone(String utteranceId) {
+                    if (utteranceId != null && utteranceId.startsWith("SYNTH_")) {
+                        if (preloadTask != null) preloadTask.onSynthesizeDone(utteranceId);
+                        return;
+                    }
+                    if (externalProgressListener != null) externalProgressListener.onDone(utteranceId);
+                }
+                @Override
+                public void onError(String utteranceId) {
+                    if (utteranceId != null && utteranceId.startsWith("SYNTH_")) {
+                        if (preloadTask != null) preloadTask.onSynthesizeDone(utteranceId);
+                        return;
+                    }
+                    if (externalProgressListener != null) externalProgressListener.onError(utteranceId);
+                }
+            });
+        }
+    }
+
+    public void setExternalCompletedListener(OnUtteranceCompletedListener listener) {
+        this.externalCompletedListener = listener;
+        if (ttsEngine != null && Build.VERSION.SDK_INT < 15) {
+            ttsEngine.setOnUtteranceCompletedListener(new OnUtteranceCompletedListener() {
+                @Override
+                public void onUtteranceCompleted(String utteranceId) {
+                    if (utteranceId != null && utteranceId.startsWith("SYNTH_")) {
+                        if (preloadTask != null) preloadTask.onSynthesizeDone(utteranceId);
+                        return;
+                    }
+                    if (externalCompletedListener != null) externalCompletedListener.onUtteranceCompleted(utteranceId);
+                }
+            });
+        }
+    }
+
     public boolean isInit() {
         return ttsEngine != null;
     }
@@ -273,9 +338,23 @@ public class TTSEngine {
         LOG.d(TAG, "Speek s", AppState.get().ttsSpeed);
         LOG.d(TAG, "Speek AppSP.get().lastBookParagraph", AppSP.get().lastBookParagraph);
 
+        if (AppState.get().ttsPrecomputeLines > 0) {
+            if (preloadTask != null) {
+                preloadTask.stop();
+            }
+            preloadTask = new TTSPreloadTask(ttsEngine, playbackListener);
+        } else {
+            if (preloadTask != null) {
+                preloadTask.stop();
+                preloadTask = null;
+            }
+        }
+
         if (AppState.get().ttsPauseDuration > 0 && text.contains(TxtUtils.TTS_PAUSE)) {
             String[] parts = text.split(TxtUtils.TTS_PAUSE);
-            ttsEngine.playSilence(0l, TextToSpeech.QUEUE_FLUSH, mapTemp);
+            if (preloadTask == null) {
+                ttsEngine.playSilence(0l, TextToSpeech.QUEUE_FLUSH, mapTemp);
+            }
             for (int i = AppSP.get().lastBookParagraph; i < parts.length; i++) {
 
                 String big = parts[i];
@@ -292,30 +371,51 @@ public class TTSEngine {
                     }
 
                     if (big.contains(TxtUtils.TTS_STOP)) {
-                        HashMap<String, String> mapStop = new HashMap<String, String>();
-                        mapStop.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, STOP_SIGNAL);
-                        ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapStop);
+                        if (preloadTask != null) {
+                            preloadTask.addSilence(AppState.get().ttsPauseDuration, STOP_SIGNAL);
+                        } else {
+                            HashMap<String, String> mapStop = new HashMap<String, String>();
+                            mapStop.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, STOP_SIGNAL);
+                            ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapStop);
+                        }
                         LOG.d("Add stop signal");
                     }
                     if (big.contains(TxtUtils.TTS_NEXT)) {
-                        ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
+                        if (preloadTask != null) {
+                            preloadTask.addSilence(0L, UTTERANCE_ID_DONE);
+                        } else {
+                            ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
+                        }
                         LOG.d("next-page signal");
                         break;
                     }
 
-                    HashMap<String, String> mapTemp1 = new HashMap<String, String>();
-                    mapTemp1.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, FINISHED_SIGNAL + i);
+                    if (preloadTask != null) {
+                        preloadTask.addSentence(big, FINISHED_SIGNAL + i);
+                        preloadTask.addSilence(AppState.get().ttsPauseDuration, "TEMP_" + i);
+                    } else {
+                        HashMap<String, String> mapTemp1 = new HashMap<String, String>();
+                        mapTemp1.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, FINISHED_SIGNAL + i);
 
-                    ttsEngine.speak(big, TextToSpeech.QUEUE_ADD, mapTemp1);
-                    ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapTemp);
+                        ttsEngine.speak(big, TextToSpeech.QUEUE_ADD, mapTemp1);
+                        ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapTemp);
+                    }
                     LOG.d("pageHTML-parts", i, big);
                 }
             }
-            ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
+            if (preloadTask != null) {
+                preloadTask.addSilence(0L, UTTERANCE_ID_DONE);
+            } else {
+                ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
+            }
         } else {
             String textToPlay = text.replace(TxtUtils.TTS_PAUSE, "");
             LOG.d("pageHTML-parts-single", text);
-            ttsEngine.speak(textToPlay, TextToSpeech.QUEUE_FLUSH, map);
+            if (preloadTask != null) {
+                preloadTask.addSentence(textToPlay, UTTERANCE_ID_DONE);
+            } else {
+                ttsEngine.speak(textToPlay, TextToSpeech.QUEUE_FLUSH, map);
+            }
         }
 
     }

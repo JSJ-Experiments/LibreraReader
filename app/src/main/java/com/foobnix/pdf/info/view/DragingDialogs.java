@@ -902,6 +902,30 @@ public class DragingDialogs {
                     }
                 });
 
+                final TextView ttsPrecomputeLines = view.findViewById(R.id.ttsPrecomputeLines);
+                ttsPrecomputeLines.setText("" + AppState.get().ttsPrecomputeLines);
+                TxtUtils.underlineTextView(ttsPrecomputeLines);
+
+                ttsPrecomputeLines.setOnClickListener(new OnClickListener() {
+                    @Override public void onClick(View v) {
+                        final PopupMenu popupMenu = new PopupMenu(v.getContext(), v);
+                        for (int i = 0; i <= 10; i++) {
+                            final int j = i;
+                            popupMenu.getMenu()
+                                     .add(i + " sentences")
+                                     .setOnMenuItemClickListener(new OnMenuItemClickListener() {
+                                         @Override public boolean onMenuItemClick(MenuItem item) {
+                                             AppState.get().ttsPrecomputeLines = j;
+                                             ttsPrecomputeLines.setText("" + AppState.get().ttsPrecomputeLines);
+                                             TxtUtils.underlineTextView(ttsPrecomputeLines);
+                                             return false;
+                                         }
+                                     });
+                        }
+                        popupMenu.show();
+                    }
+                });
+
                 ttsLang.setVisibility(TxtUtils.visibleIf(Build.VERSION.SDK_INT >= 21));
 
                 timerTime.setText(
