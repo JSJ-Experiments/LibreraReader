@@ -153,9 +153,10 @@ public class TTSPreloadTask {
             }
             if (listener != null) listener.onSentenceStart(next.utteranceId);
             final String uId = next.utteranceId;
+            final long sleepTime = next.silenceDuration;
             new Thread(() -> {
                 try {
-                    Thread.sleep(next.silenceDuration);
+                    Thread.sleep(sleepTime);
                 } catch (InterruptedException e) { }
                 if (isStopped) return;
                 isPlaying = false;
