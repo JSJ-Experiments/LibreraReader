@@ -51,8 +51,11 @@ if [ "$ARG" == "clean" ]; then
   make clean
 fi
 
-if [ ! -d "build/release" ]; then
+if [ ! -f "Makelists" ]; then
   make generate
+fi
+
+if [ "${BUILD_MUPDF_RELEASE:-false}" == "true" ] && [ ! -d "build/release" ]; then
   make release
 fi
 
