@@ -324,7 +324,19 @@ JNIEXPORT jlong
         if (atime == 0) {
             doc->document = (fz_document*)fz_open_accelerated_document(doc->ctx, filename, NULL);
         } else {
-            doc->document = (fz_document*)fz_open_accelerated_document(doc->ctx, filename, accel);
+            fz_try(doc->ctx)
+            {
+                doc->document = (fz_document*)fz_open_accelerated_document(doc->ctx, filename, accel);
+            }
+            fz_catch(doc->ctx)
+            {
+                __android_log_print(ANDROID_LOG_WARN, "EBookDroid", "Accelerated open failed for %s: %s", filename, fz_caught_message(doc->ctx));
+                doc->document = NULL;
+            }
+
+            if (doc->document == NULL) {
+                doc->document = (fz_document*)fz_open_accelerated_document(doc->ctx, filename, NULL);
+            }
         }
 
         // fz_drop_context(doc->ctx);
