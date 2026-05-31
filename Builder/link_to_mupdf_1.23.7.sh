@@ -11,6 +11,7 @@ VERSION_TAG="1.23.7"
 MUPDF_FOLDER=mupdf-$VERSION_TAG
 ARG="${1:-}"
 ARG2="${2:-}"
+MUPDF_ABIS="${MUPDF_ABIS:-armeabi-v7a arm64-v8a x86 x86_64}"
 
 if [ "$ARG" == "fdroid" ]; then
   MUPDF_FOLDER=$MUPDF_FOLDER-fdroid
@@ -74,10 +75,9 @@ mv $MUPDF_JAVA/jni/Android-$VERSION_TAG.mk $MUPDF_JAVA/jni/Android.mk
 rm -rf $LIBS
 mkdir $LIBS
 
-ln -s $MUPDF_JAVA/libs/armeabi-v7a $LIBS
-ln -s $MUPDF_JAVA/libs/arm64-v8a $LIBS
-ln -s $MUPDF_JAVA/libs/x86 $LIBS
-ln -s $MUPDF_JAVA/libs/x86_64 $LIBS
+for ABI in $MUPDF_ABIS; do
+  ln -s "$MUPDF_JAVA/libs/$ABI" "$LIBS/$ABI"
+done
 
 if [ "$ARG" == "copy" ]; then
 
@@ -161,20 +161,30 @@ if [ "$ARG" == "clean_ndk" ]; then
 
 fi
 
+build_mupdf_abis() {
+  local NDK="$1"
+  local PIDS=()
+
+  for ABI in $MUPDF_ABIS; do
+    "$NDK" NDK_APPLICATION_MK=jni/Application.mk APP_ABI="$ABI" APP_PLATFORM=android-24 &
+    PIDS+=("$!")
+  done
+
+  for PID in "${PIDS[@]}"; do
+    wait "$PID"
+  done
+}
+
 if [ "$ARG" == "fdroid" ]; then
   NDK_FOUND=0
   for NDK in "${ANDROID_NDK_HOME:-}/ndk-build" "$PATH1/$FDRIOD_NDK_VERSION/ndk-build" "$PATH2/$FDRIOD_NDK_VERSION/ndk-build" "$PATH3/$FDRIOD_NDK_VERSION/ndk-build";
     do
-      if [ -f "$NDK" ]; then
-      NDK_FOUND=1
-      $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=armeabi-v7a APP_PLATFORM=android-24 &
-      $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=arm64-v8a   APP_PLATFORM=android-24 &
-      $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86         APP_PLATFORM=android-24 &
-      $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86_64      APP_PLATFORM=android-24
-      wait
-      echo "=================="
-      echo "NDK:"  $NDK
-      echo "APP_PLATFORM=android-24"
+	  if [ -f "$NDK" ]; then
+	  NDK_FOUND=1
+	  build_mupdf_abis "$NDK"
+	  echo "=================="
+	  echo "NDK:"  $NDK
+	  echo "APP_PLATFORM=android-24"
       break
       fi
     done
@@ -188,11 +198,7 @@ else
   do
     if [ -f "$NDK" ]; then
     NDK_FOUND=1
-    $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=armeabi-v7a APP_PLATFORM=android-24 &
-    $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=arm64-v8a   APP_PLATFORM=android-24 &
-    $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86         APP_PLATFORM=android-24 &
-    $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86_64      APP_PLATFORM=android-24
-    wait
+    build_mupdf_abis "$NDK"
     echo "=================="
     echo "NDK:"  $NDK
     echo "APP_PLATFORM=android-24"
