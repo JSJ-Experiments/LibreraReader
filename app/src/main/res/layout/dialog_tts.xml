@@ -162,7 +162,7 @@
                 android:layout_height="wrap_content"
                 android:minWidth="150dip"
                 android:singleLine="true"
-                android:text="Precompute sentences" />
+                android:text="TTS preload ahead" />
 
             <TextView
                 android:id="@+id/ttsPrecomputeLines"
