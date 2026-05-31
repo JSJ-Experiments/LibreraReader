@@ -13,7 +13,9 @@ if [ "$1" == "fdroid" ]; then
   MUPDF_FOLDER=$MUPDF_FOLDER-fdroid
 fi
 
-git clone --recursive git://git.ghostscript.com/mupdf.git --branch $VERSION_TAG $MUPDF_FOLDER
+if [ ! -d "$MUPDF_FOLDER/.git" ]; then
+  git clone --recursive https://git.ghostscript.com/mupdf.git --branch $VERSION_TAG $MUPDF_FOLDER
+fi
 
 MUPDF_ROOT=$BUILD_DIR/$MUPDF_FOLDER
 
@@ -123,6 +125,7 @@ fi
 
 PATH1=/Users/ivanivanenko/Library/Android/sdk/ndk
 PATH2=/home/dev/Android/Sdk/ndk
+PATH3=$ANDROID_HOME/ndk
 
 if [ ! -d "$PATH1/$NDK_VERSION" ]; then
     echo "-- NDK ERROR --"
@@ -144,7 +147,7 @@ if [ "$1" == "clean_ndk" ]; then
 fi
 
 if [ "$1" == "fdroid" ]; then
-  for NDK in "$PATH1/$FDRIOD_NDK_VERSION/ndk-build" "$PATH2/$FDRIOD_NDK_VERSION/ndk-build";
+  for NDK in "$ANDROID_NDK_HOME/ndk-build" "$PATH1/$FDRIOD_NDK_VERSION/ndk-build" "$PATH2/$FDRIOD_NDK_VERSION/ndk-build" "$PATH3/$FDRIOD_NDK_VERSION/ndk-build";
     do
       if [ -f "$NDK" ]; then
       $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=armeabi-v7a APP_PLATFORM=android-24 &
@@ -157,7 +160,7 @@ if [ "$1" == "fdroid" ]; then
       fi
     done
 else
-  for NDK in "$PATH1/$NDK_VERSION/ndk-build" "$PATH2/$NDK_VERSION/ndk-build";
+  for NDK in "$ANDROID_NDK_HOME/ndk-build" "$PATH1/$NDK_VERSION/ndk-build" "$PATH2/$NDK_VERSION/ndk-build" "$PATH3/$NDK_VERSION/ndk-build";
   do
     if [ -f "$NDK" ]; then
     $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=armeabi-v7a APP_PLATFORM=android-24 &
