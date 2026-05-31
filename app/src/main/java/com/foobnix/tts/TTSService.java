@@ -87,6 +87,9 @@ import java.util.List;
     String path;
     int wh;
     int emptyPageCount = 0;
+    private final Object preloadedPageLock = new Object();
+    private Integer preloadedPageNumber;
+    private String preloadedCarryText;
     final OnAudioFocusChangeListener listener = new OnAudioFocusChangeListener() {
         @Override public void onAudioFocusChange(int focusChange) {
             LOG.d("onAudioFocusChange", focusChange);
@@ -600,8 +603,141 @@ import java.util.List;
         }
     }
 
+    private static class PageSpeech {
+        String text;
+        String carryText;
+        boolean emptyPage;
+    }
+
+    private void clearPreloadedPage() {
+        synchronized (preloadedPageLock) {
+            preloadedPageNumber = null;
+            preloadedCarryText = null;
+        }
+    }
+
+    private int getFinishedParagraph(String utteranceId) {
+        String value = utteranceId.replace(TTSEngine.FINISHED_SIGNAL, "");
+        int end = 0;
+        while (end < value.length() && Character.isDigit(value.charAt(end))) {
+            end++;
+        }
+        return Integer.parseInt(value.substring(0, end));
+    }
+
+    private PageSpeech getPageSpeech(CodecDocument dc, String preText, int pageNumber, String anchor) {
+        if (dc == null || pageNumber >= AppSP.get().lastBookPageCount) {
+            return null;
+        }
+
+        CodecPage page = dc.getPage(pageNumber);
+        if (page == null) {
+            return null;
+        }
+
+        String pageHTML = page.getPageHTML();
+        page.recycle();
+        pageHTML = TxtUtils.replaceHTMLforTTS(pageHTML);
+
+        if (TxtUtils.isNotEmpty(anchor)) {
+            int indexOf = pageHTML.indexOf(anchor);
+            if (indexOf > 0) {
+                pageHTML = pageHTML.substring(indexOf);
+                LOG.d("find anchor new text", pageHTML);
+            }
+        }
+
+        PageSpeech speech = new PageSpeech();
+        if (TxtUtils.isEmpty(pageHTML)) {
+            speech.emptyPage = true;
+            return speech;
+        }
+
+        String[] parts = TxtUtils.getParts(pageHTML);
+        speech.text = pageNumber + 1 >= AppSP.get().lastBookPageCount || AppState.get().ttsTunnOnLastWord ? pageHTML : parts[0];
+        speech.carryText = pageNumber + 1 >= AppSP.get().lastBookPageCount || AppState.get().ttsTunnOnLastWord ? "" : parts[1];
+
+        if (TxtUtils.isNotEmpty(preText)) {
+            char last = preText.charAt(preText.length() - 1);
+            if (last == '-') {
+                preText = TxtUtils.replaceLast(preText, "-", "");
+                speech.text = preText + speech.text;
+            } else {
+                speech.text = preText + " " + speech.text;
+            }
+        }
+
+        return speech;
+    }
+
+    private void preloadNextPage(CodecDocument dc, int pageNumber, String carryText) {
+        if (AppState.get().ttsPrecomputeLines <= 0) {
+            clearPreloadedPage();
+            return;
+        }
+
+        int nextPageNumber = pageNumber + 1;
+        if (nextPageNumber >= AppSP.get().lastBookPageCount) {
+            clearPreloadedPage();
+            return;
+        }
+
+        PageSpeech speech = getPageSpeech(dc, carryText, nextPageNumber, null);
+        if (speech == null || speech.emptyPage || TxtUtils.isEmpty(speech.text)) {
+            clearPreloadedPage();
+            return;
+        }
+
+        if (TTSEngine.get().appendPreloadText(speech.text, "_P" + nextPageNumber)) {
+            synchronized (preloadedPageLock) {
+                preloadedPageNumber = nextPageNumber;
+                preloadedCarryText = speech.carryText;
+            }
+        }
+    }
+
+    private boolean consumePreloadedNextPage() {
+        final int pageNumber;
+        final String carryText;
+        synchronized (preloadedPageLock) {
+            if (preloadedPageNumber == null || preloadedPageNumber != AppSP.get().lastBookPage + 1) {
+                return false;
+            }
+            pageNumber = preloadedPageNumber;
+            carryText = preloadedCarryText;
+            preloadedPageNumber = null;
+            preloadedCarryText = null;
+        }
+
+        AppSP.get().lastBookPage = pageNumber;
+        AppSP.get().tempBookPage = pageNumber;
+        AppSP.get().lastBookParagraph = 0;
+        EventBus.getDefault().post(new MessagePageNumber(pageNumber));
+
+        CodecDocument dc = getDC();
+        if (dc != null) {
+            AppSP.get().lastBookPageCount = dc.getPageCount();
+            TTSNotification.show(AppSP.get().lastBookPath, pageNumber + 1, dc.getPageCount());
+            preloadNextPage(dc, pageNumber, carryText);
+        }
+
+        EventBus.getDefault().post(new TtsStatus());
+        TTSNotification.showLast();
+
+        new Thread(() -> {
+            AppBook load = SharedBooks.load(AppSP.get().lastBookPath);
+            load.currentPageChanged(pageNumber + 1, AppSP.get().lastBookPageCount);
+
+            SharedBooks.saveAsync(load);
+            AppProfile.save(this);
+        }, "@T TTS Preloaded Save").start();
+
+        return true;
+    }
+
     @TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1)
     private void playPage(String preText, int pageNumber, String anchor) {
+        clearPreloadedPage();
         //releaseWakeLock();
         acquireWakeLock();
         mMediaSessionCompat.setActive(true);
@@ -641,8 +777,8 @@ import java.util.List;
                 return;
             }
 
-            CodecPage page = dc.getPage(pageNumber);
-            if(page==null){
+            PageSpeech speech = getPageSpeech(dc, preText, pageNumber, anchor);
+            if(speech==null){
                 EventBus.getDefault()
                         .post(new TtsStatus());
 
@@ -650,21 +786,7 @@ import java.util.List;
                 stopSelf();
                 return;
             }
-            String pageHTML = page.getPageHTML();
-            page.recycle();
-            pageHTML = TxtUtils.replaceHTMLforTTS(pageHTML);
-
-            if (TxtUtils.isNotEmpty(anchor)) {
-                int indexOf = pageHTML.indexOf(anchor);
-                if (indexOf > 0) {
-                    pageHTML = pageHTML.substring(indexOf);
-                    LOG.d("find anchor new text", pageHTML);
-                }
-            }
-
-            LOG.d(TAG, pageHTML);
-
-            if (TxtUtils.isEmpty(pageHTML)) {
+            if (speech.emptyPage) {
                 LOG.d("empty page play next one", emptyPageCount);
                 emptyPageCount++;
                 if (emptyPageCount < 3) {
@@ -673,23 +795,8 @@ import java.util.List;
                 return;
             }
             emptyPageCount = 0;
-
-            String[] parts = TxtUtils.getParts(pageHTML);
-            String firstPart =
-                    pageNumber + 1 >= AppSP.get().lastBookPageCount || AppState.get().ttsTunnOnLastWord ? pageHTML :
-                            parts[0];
-            final String secondPart =
-                    pageNumber + 1 >= AppSP.get().lastBookPageCount || AppState.get().ttsTunnOnLastWord ? "" : parts[1];
-
-            if (TxtUtils.isNotEmpty(preText)) {
-                char last = preText.charAt(preText.length() - 1);
-                if (last == '-') {
-                    preText = TxtUtils.replaceLast(preText, "-", "");
-                    firstPart = preText + firstPart;
-                } else {
-                    firstPart = preText + " " + firstPart;
-                }
-            }
+            final String firstPart = speech.text;
+            final String secondPart = speech.carryText;
             final String preText1 = preText;
 
             if (Build.VERSION.SDK_INT >= 15) {
@@ -701,7 +808,7 @@ import java.util.List;
 
                              @Override public void onError(String utteranceId) {
                                  LOG.d(TAG, "onUtteranceCompleted onError", utteranceId);
-                                 if (!utteranceId.equals(TTSEngine.UTTERANCE_ID_DONE)) {
+                                 if (!utteranceId.startsWith(TTSEngine.UTTERANCE_ID_DONE)) {
                                      return;
                                  }
                                  stopMediaSesstionAndReleaweWakeLock();
@@ -720,15 +827,14 @@ import java.util.List;
                                  if (utteranceId.startsWith(TTSEngine.FINISHED_SIGNAL)) {
                                      if (TxtUtils.isNotEmpty(preText1)) {
                                          AppSP.get().lastBookParagraph =
-                                                 Integer.parseInt(utteranceId.replace(TTSEngine.FINISHED_SIGNAL, ""));
+                                                 getFinishedParagraph(utteranceId);
                                      } else {
-                                         AppSP.get().lastBookParagraph = Integer.parseInt(
-                                                 utteranceId.replace(TTSEngine.FINISHED_SIGNAL, "")) + 1;
+                                         AppSP.get().lastBookParagraph = getFinishedParagraph(utteranceId) + 1;
                                      }
                                      return;
                                  }
 
-                                 if (!utteranceId.equals(TTSEngine.UTTERANCE_ID_DONE)) {
+                                 if (!utteranceId.startsWith(TTSEngine.UTTERANCE_ID_DONE)) {
                                      LOG.d(TAG, "onUtteranceCompleted skip", utteranceId);
                                      return;
                                  }
@@ -741,6 +847,9 @@ import java.util.List;
                                  }
 
                                  AppSP.get().lastBookParagraph = 0;
+                                 if (consumePreloadedNextPage()) {
+                                     return;
+                                 }
                                  playPage(secondPart, AppSP.get().lastBookPage + 1, null);
                              }
                          });
@@ -756,15 +865,14 @@ import java.util.List;
                                  if (utteranceId.startsWith(TTSEngine.FINISHED_SIGNAL)) {
                                      if (TxtUtils.isNotEmpty(preText1)) {
                                          AppSP.get().lastBookParagraph =
-                                                 Integer.parseInt(utteranceId.replace(TTSEngine.FINISHED_SIGNAL, ""));
+                                                 getFinishedParagraph(utteranceId);
                                      } else {
-                                         AppSP.get().lastBookParagraph = Integer.parseInt(
-                                                 utteranceId.replace(TTSEngine.FINISHED_SIGNAL, "")) + 1;
+                                         AppSP.get().lastBookParagraph = getFinishedParagraph(utteranceId) + 1;
                                      }
                                      return;
                                  }
 
-                                 if (!utteranceId.equals(TTSEngine.UTTERANCE_ID_DONE)) {
+                                 if (!utteranceId.startsWith(TTSEngine.UTTERANCE_ID_DONE)) {
                                      LOG.d(TAG, "onUtteranceCompleted skip", "");
                                      return;
                                  }
@@ -778,6 +886,9 @@ import java.util.List;
                                  }
 
                                  AppSP.get().lastBookParagraph = 0;
+                                 if (consumePreloadedNextPage()) {
+                                     return;
+                                 }
                                  playPage(secondPart, AppSP.get().lastBookPage + 1, null);
                              }
                          });
@@ -785,6 +896,7 @@ import java.util.List;
 
             TTSEngine.get()
                      .speek(firstPart);
+            preloadNextPage(dc, pageNumber, secondPart);
 
             TTSNotification.show(AppSP.get().lastBookPath, pageNumber + 1, dc.getPageCount());
             LOG.d("TtsStatus send");

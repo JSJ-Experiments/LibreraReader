@@ -362,11 +362,14 @@ public class TTSEngine {
             }
         }
 
+        if (preloadTask != null) {
+            queuePreloadText(text, AppSP.get().lastBookParagraph, "_P" + AppSP.get().lastBookPage);
+            return;
+        }
+
         if (AppState.get().ttsPauseDuration > 0 && text.contains(TxtUtils.TTS_PAUSE)) {
             String[] parts = text.split(TxtUtils.TTS_PAUSE);
-            if (preloadTask == null) {
-                ttsEngine.playSilence(0l, TextToSpeech.QUEUE_FLUSH, mapTemp);
-            }
+            ttsEngine.playSilence(0l, TextToSpeech.QUEUE_FLUSH, mapTemp);
             for (int i = AppSP.get().lastBookParagraph; i < parts.length; i++) {
 
                 String big = parts[i];
@@ -383,53 +386,83 @@ public class TTSEngine {
                     }
 
                     if (big.contains(TxtUtils.TTS_STOP)) {
-                        if (preloadTask != null) {
-                            preloadTask.addSilence(AppState.get().ttsPauseDuration, STOP_SIGNAL);
-                        } else {
-                            HashMap<String, String> mapStop = new HashMap<String, String>();
-                            mapStop.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, STOP_SIGNAL);
-                            ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapStop);
-                        }
+                        HashMap<String, String> mapStop = new HashMap<String, String>();
+                        mapStop.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, STOP_SIGNAL);
+                        ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapStop);
                         LOG.d("Add stop signal");
                     }
                     if (big.contains(TxtUtils.TTS_NEXT)) {
-                        if (preloadTask != null) {
-                            preloadTask.addSilence(0L, UTTERANCE_ID_DONE);
-                        } else {
-                            ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
-                        }
+                        ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
                         LOG.d("next-page signal");
                         break;
                     }
 
-                    if (preloadTask != null) {
-                        preloadTask.addSentence(big, FINISHED_SIGNAL + i);
-                        preloadTask.addSilence(AppState.get().ttsPauseDuration, "TEMP_" + i);
-                    } else {
-                        HashMap<String, String> mapTemp1 = new HashMap<String, String>();
-                        mapTemp1.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, FINISHED_SIGNAL + i);
+                    HashMap<String, String> mapTemp1 = new HashMap<String, String>();
+                    mapTemp1.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, FINISHED_SIGNAL + i);
 
-                        ttsEngine.speak(big, TextToSpeech.QUEUE_ADD, mapTemp1);
-                        ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapTemp);
-                    }
+                    ttsEngine.speak(big, TextToSpeech.QUEUE_ADD, mapTemp1);
+                    ttsEngine.playSilence(AppState.get().ttsPauseDuration, TextToSpeech.QUEUE_ADD, mapTemp);
                     LOG.d("pageHTML-parts", i, big);
                 }
             }
-            if (preloadTask != null) {
-                preloadTask.addSilence(0L, UTTERANCE_ID_DONE);
-            } else {
-                ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
-            }
+            ttsEngine.playSilence(0L, TextToSpeech.QUEUE_ADD, map);
         } else {
             String textToPlay = text.replace(TxtUtils.TTS_PAUSE, "");
             LOG.d("pageHTML-parts-single", text);
-            if (preloadTask != null) {
-                preloadTask.addSentence(textToPlay, UTTERANCE_ID_DONE);
-            } else {
-                ttsEngine.speak(textToPlay, TextToSpeech.QUEUE_FLUSH, map);
-            }
+            ttsEngine.speak(textToPlay, TextToSpeech.QUEUE_FLUSH, map);
         }
 
+    }
+
+    public synchronized boolean appendPreloadText(final String text, String utteranceSuffix) {
+        if (preloadTask == null || TxtUtils.isEmpty(text)) {
+            return false;
+        }
+        queuePreloadText(text, 0, utteranceSuffix);
+        return true;
+    }
+
+    private void queuePreloadText(final String text, int startParagraph, String utteranceSuffix) {
+        if (preloadTask == null) {
+            return;
+        }
+
+        if (AppState.get().ttsPauseDuration > 0 && text.contains(TxtUtils.TTS_PAUSE)) {
+            String[] parts = text.split(TxtUtils.TTS_PAUSE);
+            for (int i = startParagraph; i < parts.length; i++) {
+                String big = parts[i];
+                big = big.trim();
+
+                if (TxtUtils.isNotEmpty(big)) {
+                    if (big.length() == 1 && !Character.isLetterOrDigit(big.charAt(0))) {
+                        LOG.d("Skip: " + big);
+                        continue;
+                    }
+                    if (big.contains(TxtUtils.TTS_SKIP)) {
+                        continue;
+                    }
+
+                    if (big.contains(TxtUtils.TTS_STOP)) {
+                        preloadTask.addSilence(AppState.get().ttsPauseDuration, STOP_SIGNAL + utteranceSuffix);
+                        LOG.d("Add stop signal");
+                    }
+                    if (big.contains(TxtUtils.TTS_NEXT)) {
+                        preloadTask.addSilence(0L, UTTERANCE_ID_DONE + utteranceSuffix);
+                        LOG.d("next-page signal");
+                        break;
+                    }
+
+                    preloadTask.addSentence(big, FINISHED_SIGNAL + i + utteranceSuffix);
+                    preloadTask.addSilence(AppState.get().ttsPauseDuration, "TEMP_" + i + utteranceSuffix);
+                    LOG.d("pageHTML-parts", i, big);
+                }
+            }
+            preloadTask.addSilence(0L, UTTERANCE_ID_DONE + utteranceSuffix);
+        } else {
+            String textToPlay = text.replace(TxtUtils.TTS_PAUSE, "");
+            LOG.d("pageHTML-parts-single", text);
+            preloadTask.addSentence(textToPlay, UTTERANCE_ID_DONE + utteranceSuffix);
+        }
     }
 
     public void speakToFile(final DocumentController controller, final ResultResponse<String> info, int from, int to) {
