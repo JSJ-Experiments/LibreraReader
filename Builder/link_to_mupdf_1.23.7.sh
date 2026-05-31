@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #. ~/.profile
+set -euo pipefail
 
 # get the location of this script, we will checkout mupdf into the same directory
 BUILD_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -8,13 +9,19 @@ cd $BUILD_DIR
 
 VERSION_TAG="1.23.7"
 MUPDF_FOLDER=mupdf-$VERSION_TAG
+ARG="${1:-}"
+ARG2="${2:-}"
 
-if [ "$1" == "fdroid" ]; then
+if [ "$ARG" == "fdroid" ]; then
   MUPDF_FOLDER=$MUPDF_FOLDER-fdroid
 fi
 
+if [ -d "$MUPDF_FOLDER" ] && [ ! -d "$MUPDF_FOLDER/.git" ]; then
+  rm -rf "$MUPDF_FOLDER"
+fi
+
 if [ ! -d "$MUPDF_FOLDER/.git" ]; then
-  git clone --recursive https://git.ghostscript.com/mupdf.git --branch $VERSION_TAG $MUPDF_FOLDER
+  git clone --recursive https://github.com/ArtifexSoftware/mupdf.git --branch $VERSION_TAG $MUPDF_FOLDER
 fi
 
 MUPDF_ROOT=$BUILD_DIR/$MUPDF_FOLDER
@@ -30,14 +37,14 @@ LIBS=$BUILD_DIR/../app/src/main/jniLibs
 echo "MUPDF :" $VERSION_TAG
 echo "================== "
 
-mkdir $SRC
-mkdir $MUPDF_FOLDER
+mkdir -p $SRC
+mkdir -p $MUPDF_FOLDER
 
 cd $MUPDF_FOLDER
 
 echo "=================="
 
-if [ "$1" == "clean" ]; then
+if [ "$ARG" == "clean" ]; then
   git reset --hard &&  git clean -f -d
   rm -rf generated
   rm -rf build
@@ -56,7 +63,7 @@ cp -Rp jni $MUPDF_JAVA/jni
 mv $MUPDF_JAVA/jni/Android-$VERSION_TAG.mk $MUPDF_JAVA/jni/Android.mk
 
 
-rm -r $LIBS
+rm -rf $LIBS
 mkdir $LIBS
 
 ln -s $MUPDF_JAVA/libs/armeabi-v7a $LIBS
@@ -64,7 +71,7 @@ ln -s $MUPDF_JAVA/libs/arm64-v8a $LIBS
 ln -s $MUPDF_JAVA/libs/x86 $LIBS
 ln -s $MUPDF_JAVA/libs/x86_64 $LIBS
 
-if [ "$1" == "copy" ]; then
+if [ "$ARG" == "copy" ]; then
 
 cp -rpv $DEST/html/css-apply.c    $SRC/css-apply.c
 cp -rpv $DEST/html/epub-doc.c     $SRC/epub-doc.c
@@ -133,10 +140,10 @@ if [ ! -d "$PATH1/$NDK_VERSION" ]; then
     echo "----"
 fi
 
-if [ "$1" == "clean_ndk" ]; then
+if [ "$ARG" == "clean_ndk" ]; then
   rm -rf $MUPDF_JAVA/obj
 
-  if [ "$2" == "fdroid" ]; then
+  if [ "$ARG2" == "fdroid" ]; then
    $PATH1/$FDRIOD_NDK_VERSION/ndk-build clean
    $PATH2/$FDRIOD_NDK_VERSION/ndk-build clean
   else
@@ -146,32 +153,48 @@ if [ "$1" == "clean_ndk" ]; then
 
 fi
 
-if [ "$1" == "fdroid" ]; then
-  for NDK in "$ANDROID_NDK_HOME/ndk-build" "$PATH1/$FDRIOD_NDK_VERSION/ndk-build" "$PATH2/$FDRIOD_NDK_VERSION/ndk-build" "$PATH3/$FDRIOD_NDK_VERSION/ndk-build";
+if [ "$ARG" == "fdroid" ]; then
+  NDK_FOUND=0
+  for NDK in "${ANDROID_NDK_HOME:-}/ndk-build" "$PATH1/$FDRIOD_NDK_VERSION/ndk-build" "$PATH2/$FDRIOD_NDK_VERSION/ndk-build" "$PATH3/$FDRIOD_NDK_VERSION/ndk-build";
     do
       if [ -f "$NDK" ]; then
+      NDK_FOUND=1
       $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=armeabi-v7a APP_PLATFORM=android-24 &
       $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=arm64-v8a   APP_PLATFORM=android-24 &
       $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86         APP_PLATFORM=android-24 &
       $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86_64      APP_PLATFORM=android-24
+      wait
       echo "=================="
       echo "NDK:"  $NDK
       echo "APP_PLATFORM=android-24"
+      break
       fi
     done
+  if [ "$NDK_FOUND" -eq 0 ]; then
+    echo "No usable ndk-build found"
+    exit 1
+  fi
 else
-  for NDK in "$ANDROID_NDK_HOME/ndk-build" "$PATH1/$NDK_VERSION/ndk-build" "$PATH2/$NDK_VERSION/ndk-build" "$PATH3/$NDK_VERSION/ndk-build";
+  NDK_FOUND=0
+  for NDK in "${ANDROID_NDK_HOME:-}/ndk-build" "$PATH1/$NDK_VERSION/ndk-build" "$PATH2/$NDK_VERSION/ndk-build" "$PATH3/$NDK_VERSION/ndk-build";
   do
     if [ -f "$NDK" ]; then
+    NDK_FOUND=1
     $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=armeabi-v7a APP_PLATFORM=android-24 &
     $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=arm64-v8a   APP_PLATFORM=android-24 &
     $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86         APP_PLATFORM=android-24 &
     $NDK NDK_APPLICATION_MK=jni/Application.mk APP_ABI=x86_64      APP_PLATFORM=android-24
+    wait
     echo "=================="
     echo "NDK:"  $NDK
     echo "APP_PLATFORM=android-24"
+    break
     fi
   done
+  if [ "$NDK_FOUND" -eq 0 ]; then
+    echo "No usable ndk-build found"
+    exit 1
+  fi
 
 fi
 

@@ -105,8 +105,10 @@ jobs:
     - name: Build native MuPDF libraries
       run: |
         "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865"
+        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
         bash Builder/link_to_mupdf_1.23.7.sh
         find app/src/main/jniLibs -name 'libMuPDF.so' -print
+        test -f app/src/main/jniLibs/arm64-v8a/libMuPDF.so
 
     - name: Build with Gradle (Pro Arm64)
       run: ./gradlew app:assembleProRelease
