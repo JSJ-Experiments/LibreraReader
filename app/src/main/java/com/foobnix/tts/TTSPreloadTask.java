@@ -18,9 +18,9 @@ public class TTSPreloadTask {
     private static final String TAG = "TTSPreloadTask";
     private TextToSpeech tts;
     private final LinkedList<Sentence> queue = new LinkedList<>();
-    private MediaPlayer currentPlayer;
-    private boolean isPlaying = false;
-    private boolean isStopped = false;
+    private volatile MediaPlayer currentPlayer;
+    private volatile boolean isPlaying = false;
+    private volatile boolean isStopped = false;
 
     public interface PlaybackListener {
         void onSentenceStart(String utteranceId);
@@ -106,7 +106,13 @@ public class TTSPreloadTask {
             }
         }
         if (toSynth != null) {
-            toSynth.synthesisTriggered = true;
+            synchronized (queue) {
+                if (toSynth.synthesisTriggered || toSynth.isSynthesized) {
+                    postStats();
+                    return;
+                }
+                toSynth.synthesisTriggered = true;
+            }
             HashMap<String, String> map = new HashMap<>();
             map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "SYNTH_" + toSynth.utteranceId);
             LOG.d(TAG, "Triggering synthesis for " + toSynth.utteranceId);

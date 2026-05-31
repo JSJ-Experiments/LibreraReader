@@ -694,8 +694,7 @@ import java.util.List;
 
             if (Build.VERSION.SDK_INT >= 15) {
                 TTSEngine.get()
-                         .getTTS()
-                         .setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                         .setExternalProgressListener(new UtteranceProgressListener() {
                              @Override public void onStart(String utteranceId) {
                                  LOG.d(TAG, "onUtteranceCompleted onStart", utteranceId);
                              }

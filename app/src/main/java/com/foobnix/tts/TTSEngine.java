@@ -199,6 +199,10 @@ public class TTSEngine {
         LOG.d(TAG, "shutdown");
 
         synchronized (helpObject) {
+            if (preloadTask != null) {
+                preloadTask.stop();
+                preloadTask = null;
+            }
             if (ttsEngine != null) {
 
                 ttsEngine.shutdown();
@@ -263,6 +267,10 @@ public class TTSEngine {
 
         LOG.d(TAG, "stop");
         synchronized (helpObject) {
+            if (preloadTask != null) {
+                preloadTask.stop();
+                preloadTask = null;
+            }
 
             if (ttsEngine != null) {
                 if (Build.VERSION.SDK_INT >= 15) {
@@ -281,6 +289,10 @@ public class TTSEngine {
         LOG.d(TAG, "stop");
         TxtUtils.dictHash = "";
         synchronized (helpObject) {
+            if (preloadTask != null) {
+                preloadTask.stop();
+                preloadTask = null;
+            }
             if (ttsEngine != null) {
                 ttsEngine.shutdown();
             }
