@@ -21,7 +21,7 @@ if [ -d "$MUPDF_FOLDER" ] && [ ! -d "$MUPDF_FOLDER/.git" ]; then
 fi
 
 if [ ! -d "$MUPDF_FOLDER/.git" ]; then
-  git clone --recursive https://github.com/ArtifexSoftware/mupdf.git --branch $VERSION_TAG $MUPDF_FOLDER
+  git clone https://github.com/ArtifexSoftware/mupdf.git --branch "$VERSION_TAG" "$MUPDF_FOLDER"
 fi
 
 MUPDF_ROOT=$BUILD_DIR/$MUPDF_FOLDER
@@ -43,6 +43,8 @@ mkdir -p $MUPDF_FOLDER
 cd $MUPDF_FOLDER
 
 echo "=================="
+git submodule sync --recursive
+git submodule update --init --recursive
 
 if [ "$ARG" == "clean" ]; then
   git reset --hard &&  git clean -f -d
@@ -51,9 +53,12 @@ if [ "$ARG" == "clean" ]; then
   make clean
 fi
 
-if [ ! -f "Makelists" ]; then
+if [ ! -f "Makelists" ] || [ ! -f "generated/resources/fonts/sil/CharisSIL.cff.c" ] || [ ! -f "generated/resources/fonts/noto/NotoSerif-Regular.otf.c" ]; then
   make generate
 fi
+
+test -f generated/resources/fonts/sil/CharisSIL.cff.c
+test -f generated/resources/fonts/noto/NotoSerif-Regular.otf.c
 
 if [ "${BUILD_MUPDF_RELEASE:-false}" == "true" ] && [ ! -d "build/release" ]; then
   make release
